@@ -1,0 +1,70 @@
+services:
+  traefik:
+    image: traefik:v3.6.7
+    container_name: traefik
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "80:80"     # HTTP
+      - "443:443"   # HTTPS
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # To see other containers
+      - ./acme.json:/acme.json                        # To store SSL certs
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      # Dashboard Router
+      - "traefik.http.routers.dashboard.rule=Host(`gateway.alloinfo.com`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=myresolver"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
+      # Basic Auth (generate hash: docker run --rm httpd:2-alpine htpasswd -nB admin)
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${DASHBOARD_USER:-admin}:${DASHBOARD_PASSWORD_HASH}"
+
+    command:
+      # Health Check
+      - "--ping=true"
+
+      # Dashboard
+      - "--api.dashboard=true"
+
+      # Provider Configuration
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false" # Security: don't route unless labeled
+      - "--providers.docker.network=proxy"
+      
+      # Entrypoints (Lobbies)
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      
+      # Automatic Global Redirect (HTTP -> HTTPS)
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      
+      # SSL Resolver (The Locksmith)
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=admin@yourdomain.com" # YOUR EMAIL
+      - "--certificatesresolvers.myresolver.acme.storage=/acme.json"
+
+networks:
+  proxy:
+    external: true
