@@ -1,4 +1,28 @@
 services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: socket-proxy
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /run
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Only allow what Traefik needs
+      CONTAINERS: 1
+      NETWORKS: 1
+      SERVICES: 0
+      TASKS: 0
+      INFO: 1
+    networks:
+      - socket-proxy
+    # Ref: https://github.com/Tecnativa/docker-socket-proxy
+
   traefik:
     image: traefik:v3.6.7
     container_name: traefik
@@ -22,23 +46,51 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "80:80"     # HTTP
-      - "443:443"   # HTTPS
+      - "80:80" # HTTP
+      - "443:443" # HTTPS (TCP)
+      - "443:443/udp" # HTTP/3 (QUIC)
+    depends_on:
+      - socket-proxy
+    environment:
+      - DOCKER_HOST=tcp://socket-proxy:2375
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # To see other containers
-      - ./acme.json:/acme.json                        # To store SSL certs
+      - ./acme.json:/acme.json # SSL certificates storage
+      - ./logs:/var/log/traefik # Access logs
     networks:
-      - proxy
+      - app-proxy
+      - socket-proxy
     labels:
       - "traefik.enable=true"
       # Dashboard Router
-      - "traefik.http.routers.dashboard.rule=Host(`gateway.alloinfo.com`)"
+      - "traefik.http.routers.dashboard.rule=Host(`gateway.yourdomain.com`)"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls.certresolver=myresolver"
       - "traefik.http.routers.dashboard.service=api@internal"
-      - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers"
       # Basic Auth (generate hash: docker run --rm httpd:2-alpine htpasswd -nB admin)
       - "traefik.http.middlewares.dashboard-auth.basicauth.users=${DASHBOARD_USER:-admin}:${DASHBOARD_PASSWORD_HASH}"
+
+      # Security Headers Middleware (applied globally via entrypoint)
+      # Ref: https://doc.traefik.io/traefik/middlewares/http/headers/
+      # Ref: https://owasp.org/www-project-secure-headers/
+      - "traefik.http.middlewares.security-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.security-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.security-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+
+      # Compression Middleware (gzip)
+      # Ref: https://doc.traefik.io/traefik/middlewares/http/compress/
+      - "traefik.http.middlewares.compress.compress=true"
+      - "traefik.http.middlewares.compress.compress.excludedcontenttypes=image/png,image/jpeg,image/gif,image/webp,video/mp4"
+
+      # Rate Limiting Middleware (protects against brute force/abuse)
+      # Ref: https://doc.traefik.io/traefik/middlewares/http/ratelimit/
+      - "traefik.http.middlewares.rate-limit.ratelimit.average=100"
+      - "traefik.http.middlewares.rate-limit.ratelimit.burst=50"
+      - "traefik.http.middlewares.rate-limit.ratelimit.period=1s"
+      - "traefik.http.middlewares.rate-limit.ratelimit.sourceCriterion.ipStrategy.depth=1"
 
     command:
       # Health Check
@@ -47,24 +99,49 @@ services:
       # Dashboard
       - "--api.dashboard=true"
 
-      # Provider Configuration
+      # Provider Configuration (via socket proxy for security)
+      # Ref: https://doc.traefik.io/traefik/providers/docker/
       - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false" # Security: don't route unless labeled
-      - "--providers.docker.network=proxy"
-      
-      # Entrypoints (Lobbies)
+      - "--providers.docker.endpoint=tcp://socket-proxy:2375"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=app-proxy"
+
+      # Entrypoints
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      
+      - "--entrypoints.websecure.http.middlewares=security-headers@docker,compress@docker,rate-limit@docker"
+      - "--entrypoints.websecure.http.tls.options=default"
+      - "--entrypoints.websecure.http3"
+      # Ref: https://doc.traefik.io/traefik/routing/entrypoints/#http3
+
+      # TLS Configuration (minimum TLS 1.2)
+      # Ref: https://doc.traefik.io/traefik/https/tls/
+      - "--tls.options.default.minVersion=VersionTLS12"
+
       # Automatic Global Redirect (HTTP -> HTTPS)
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      
-      # SSL Resolver (The Locksmith)
+
+      # SSL Resolver (Let's Encrypt)
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=admin@yourdomain.com" # YOUR EMAIL
+      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/acme.json"
 
+      # Access Logs (all requests to all apps)
+      # Ref: https://doc.traefik.io/traefik/observability/access-logs/
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--accesslog.format=json"
+      - "--accesslog.bufferingsize=100"
+      - "--accesslog.fields.headers.defaultmode=drop"
+      - "--accesslog.fields.headers.names.User-Agent=keep"
+      - "--accesslog.fields.headers.names.X-Forwarded-For=keep"
+
 networks:
-  proxy:
-    external: true
+  app-proxy:
+    name: app-proxy
+    external: false
+  socket-proxy:
+    # Internal network for Docker socket proxy
+    # Traefik <-> socket-proxy only, not exposed
+    internal: true
