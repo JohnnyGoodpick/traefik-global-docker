@@ -44,18 +44,54 @@ A hardened Traefik v3.6.7 reverse proxy for Docker container auto-discovery on a
 touch acme.json && chmod 600 acme.json
 mkdir -p logs
 
-# 2. Generate dashboard password
-docker run --rm httpd:2-alpine htpasswd -nB admin
+# 2. Generate dashboard password hash
+# Run interactively - it will prompt for password twice
+docker run -it --rm httpd:2-alpine htpasswd -nB admin
+# Output: admin:$2y$05$xyz...
+#
+# Or non-interactive:
+# docker run --rm httpd:2-alpine htpasswd -nbB admin 'yourpassword'
 
 # 3. Create .env file
 cp .env.example .env
-# Edit .env with your email and password hash (double the $ signs)
+# Set DASHBOARD_PASSWORD_HASH to the hash from step 2
+# IMPORTANT: Double all $ signs ($ -> $$) for Docker Compose
+# Example: $2y$05$xyz... becomes $$2y$$05$$xyz...
 
 # 4. Open firewall for HTTP/3 (QUIC uses UDP)
 sudo ufw allow 443/udp  # Ubuntu/Debian
 # or: sudo firewall-cmd --add-port=443/udp --permanent && sudo firewall-cmd --reload  # RHEL/CentOS
 
 # 5. Start Traefik (network auto-created)
+docker compose up -d
+```
+
+## Production Deployment
+
+### Recommended locations
+
+| Location | Use case |
+|----------|----------|
+| `/opt/traefik/` | System-wide service (recommended) |
+| `/srv/traefik/` | Service data focused |
+| `/opt/docker/traefik/` | Multiple Docker projects |
+
+### Setup
+
+```bash
+# Copy to production location
+sudo mkdir -p /opt/traefik
+sudo cp -r ./* /opt/traefik/
+cd /opt/traefik
+
+# Create ACME storage file (required before first run)
+touch acme.json && chmod 600 acme.json
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your values
+
+# Start
 docker compose up -d
 ```
 
