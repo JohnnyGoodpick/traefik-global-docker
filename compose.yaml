@@ -73,7 +73,7 @@ services:
       - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers"
 
       # Local testing (https://localhost/dashboard/ - accept browser warning)
-      - "traefik.http.routers.dashboard-local.rule=Host(`localhost`)"
+      - "traefik.http.routers.dashboard-local.rule=Host(`traefik.localhost`)"
       - "traefik.http.routers.dashboard-local.entrypoints=websecure"
       - "traefik.http.routers.dashboard-local.tls=true"
       - "traefik.http.routers.dashboard-local.service=api@internal"
