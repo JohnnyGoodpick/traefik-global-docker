@@ -41,12 +41,12 @@ A hardened Traefik v3.6.7 reverse proxy for Docker container auto-discovery on a
 
 ```bash
 # 1. Create required files/directories
-touch acme.json && chmod 600 acme.json
+sudo touch acme.json && sudo chown root:root acme.json && sudo chmod 600 acme.json
 mkdir -p logs
 
 # 2. Generate dashboard password hash
 # Run interactively - it will prompt for password twice
-docker run -it --rm httpd:2-alpine htpasswd -nB admin
+docker run --rm -it httpd:2-alpine htpasswd -nB admin
 # Output: admin:$2y$05$xyz...
 #
 # Or non-interactive:
@@ -85,7 +85,8 @@ sudo cp -r ./* /opt/traefik/
 cd /opt/traefik
 
 # Create ACME storage file (required before first run)
-touch acme.json && chmod 600 acme.json
+# Must be owned by root - Traefik runs as root inside the container
+sudo touch acme.json && sudo chown root:root acme.json && sudo chmod 600 acme.json
 
 # Configure environment
 cp .env.example .env
@@ -168,6 +169,29 @@ sudo logrotate -d /etc/logrotate.d/traefik
 ```
 
 Rotation: daily, keeps 14 days, compresses old logs.
+
+## Troubleshooting
+
+### `acme.json: permission denied`
+
+The `acme.json` file must be owned by `root:root` with `600` permissions. Traefik runs as root inside the container, so a file owned by your host user will be inaccessible.
+
+```bash
+sudo chown root:root acme.json && sudo chmod 600 acme.json
+docker compose up -d --force-recreate traefik
+```
+
+### Middleware "does not exist" errors
+
+If you see errors like `middleware "rate-limit@docker" does not exist` or `middleware "security-headers@docker" does not exist`, the global middlewares defined as Traefik container labels were not loaded properly. A simple `restart` is not sufficient — you need a full recreate:
+
+```bash
+docker compose up -d --force-recreate traefik
+```
+
+### Certificate resolver errors
+
+`Router uses a nonexistent certificate resolver` is typically a cascading effect of the `acme.json` permission issue above. Fix the file permissions first, then recreate the container.
 
 ## Files
 
