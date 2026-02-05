@@ -50,11 +50,14 @@ services:
       - "80:80"
       - "443:443/tcp"
       - "443:443/udp" # CRITICAL for FrankenPHP HTTP/3
+      - "127.0.0.1:9090:9090" # Dashboard - localhost only (use Tailscale for remote access)
     depends_on:
       - socket-proxy
     environment:
       - DOCKER_HOST=tcp://socket-proxy:2375
       - ACME_EMAIL=${ACME_EMAIL}
+      - DASHBOARD_USER=${DASHBOARD_USER}
+      - DASHBOARD_PASSWORD_HASH=${DASHBOARD_PASSWORD_HASH}
     tmpfs:
       - /tmp
     volumes:
@@ -65,20 +68,12 @@ services:
       - socket-internal
     labels:
       - "traefik.enable=true"
-      # Dashboard Router
-      - "traefik.http.routers.dashboard.rule=Host(`${DASHBOARD_DOMAIN}`)"
-      - "traefik.http.routers.dashboard.entrypoints=websecure"
-      - "traefik.http.routers.dashboard.tls.certresolver=myresolver"
-      - "traefik.http.routers.dashboard.service=api@internal"
-      - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers"
 
-      # Local testing (https://localhost/dashboard/ - accept browser warning)
-      - "traefik.http.routers.dashboard-local.rule=Host(`traefik.localhost`)"
-      - "traefik.http.routers.dashboard-local.entrypoints=websecure"
-      - "traefik.http.routers.dashboard-local.tls=true"
-      - "traefik.http.routers.dashboard-local.service=api@internal"
-      - "traefik.http.routers.dashboard-local.middlewares=dashboard-auth"
-      # Basic Auth (generate hash: docker run --rm httpd:2-alpine htpasswd -nB admin)
+      # Dashboard Router (localhost:8080 only, via Tailscale for remote access)
+      - "traefik.http.routers.dashboard.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.dashboard.entrypoints=dashboard"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
       - "traefik.http.middlewares.dashboard-auth.basicauth.users=${DASHBOARD_USER}:${DASHBOARD_PASSWORD_HASH}"
 
       # Security Headers (Applied globally via entrypoint)
@@ -124,6 +119,7 @@ services:
 
       # Entrypoints & HTTP/3
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.dashboard.address=:9090" # Localhost only (see ports)
 
       # Automatic Global Redirect (HTTP -> HTTPS)
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"

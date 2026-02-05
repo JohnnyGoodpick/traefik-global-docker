@@ -119,7 +119,43 @@ curl -I --http3 https://yourdomain.com
 
 ## Dashboard
 
-Access at: `https://gateway.yourdomain.com`
+The dashboard is bound to **localhost only** (`127.0.0.1:8080`) with basic auth. It is not exposed to the public internet.
+
+### Local access
+
+```bash
+# On the server
+curl -u admin:yourpassword http://localhost:9090/api/overview
+# Or open in browser via SSH tunnel
+ssh -L 8080:localhost:9090 user@your-vps
+# Then visit http://localhost:9090
+```
+
+### Remote access via Tailscale (recommended)
+
+For secure remote access without exposing the dashboard publicly:
+
+1. **Install Tailscale on your VPS**
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   ```
+
+2. **Access the dashboard**
+   ```
+   http://your-vps.tailnet-name.ts.net:8080
+   ```
+
+The dashboard requires basic auth even over Tailscale (defense in depth).
+
+### Why not public?
+
+Admin interfaces should never be publicly exposed. Even with auth:
+- Brute force attacks
+- Zero-day vulnerabilities
+- Credential stuffing
+
+Tailscale provides: identity-based access, no public exposure, audit logs
 
 ## Adding Apps
 
