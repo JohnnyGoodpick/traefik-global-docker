@@ -119,43 +119,149 @@ curl -I --http3 https://yourdomain.com
 
 ## Dashboard
 
-The dashboard is bound to **localhost only** (`127.0.0.1:8080`) with basic auth. It is not exposed to the public internet.
-
-### Local access
-
-```bash
-# On the server
-curl -u admin:yourpassword http://localhost:9090/api/overview
-# Or open in browser via SSH tunnel
-ssh -L 8080:localhost:9090 user@your-vps
-# Then visit http://localhost:9090
-```
+The dashboard is bound to **localhost only** (`127.0.0.1:9090`) with basic auth. It is not exposed to the public internet.
 
 ### Remote access via Tailscale (recommended)
 
-For secure remote access without exposing the dashboard publicly:
+[Tailscale](https://tailscale.com) creates a private mesh network (tailnet) between your devices. Install it on your servers and personal devices to securely access admin interfaces without public exposure.
 
-1. **Install Tailscale on your VPS**
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Your Tailnet                        │
+│                                                         │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐            │
+│  │  Laptop  │   │  Phone   │   │  Tablet  │  ← Clients │
+│  └────┬─────┘   └────┬─────┘   └────┬─────┘            │
+│       │              │              │                   │
+│       └──────────────┼──────────────┘                   │
+│                      │                                  │
+│         ┌────────────┴────────────┐                     │
+│         │                         │                     │
+│         ▼                         ▼                     │
+│   ┌───────────┐            ┌───────────┐               │
+│   │  Preprod  │            │   Prod    │   ← Servers   │
+│   │   :9090   │            │   :9090   │               │
+│   └───────────┘            └───────────┘               │
+│    preprod.tailnet          prod.tailnet               │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### Setup
+
+1. **Install Tailscale on each VPS**
    ```bash
    curl -fsSL https://tailscale.com/install.sh | sh
    sudo tailscale up
    ```
 
-2. **Access the dashboard**
+2. **Install Tailscale on your devices**
+   - macOS/Windows/Linux: [tailscale.com/download](https://tailscale.com/download)
+   - iOS/Android: App Store / Play Store
+
+3. **Get your server's Tailscale hostname**
+   ```bash
+   tailscale status
+   # Example output:
+   # 100.x.y.z   preprod   linux   -
    ```
-   http://your-vps.tailnet-name.ts.net:8080
+
+4. **Access the dashboard** from any device on your tailnet
+   ```
+   http://preprod.your-tailnet.ts.net:9090
+   http://prod.your-tailnet.ts.net:9090
    ```
 
 The dashboard requires basic auth even over Tailscale (defense in depth).
 
-### Why not public?
+#### Why Tailscale over public exposure?
 
-Admin interfaces should never be publicly exposed. Even with auth:
-- Brute force attacks
-- Zero-day vulnerabilities
-- Credential stuffing
+| Public (with auth) | Tailscale |
+|--------------------|-----------|
+| Visible to port scanners | Invisible to internet |
+| Vulnerable to brute force | No public endpoint |
+| Zero-day risk | Identity-based access |
+| Just a password | Device + user authentication |
 
-Tailscale provides: identity-based access, no public exposure, audit logs
+#### ACLs: Team access control (optional)
+
+By default, all devices on your tailnet can access all other devices. For solo use, this is fine.
+
+For teams, Tailscale ACLs let you restrict who can access what. ACLs are configured in the Tailscale admin console: **Access Controls** → `https://login.tailscale.com/admin/acls`
+
+```
+┌─────────────────────────────────────────┐
+│              Your Tailnet               │
+│                                         │
+│  You (admin)─────────┬─► Prod :9090 ✓   │
+│                      └─► Preprod :9090 ✓│
+│                                         │
+│  Contractor ─────────┬─► Prod :9090 ✗   │  ← ACL blocks
+│                      └─► Preprod :9090 ✓│  ← ACL allows
+└─────────────────────────────────────────┘
+```
+
+**Example ACL configuration:**
+
+```jsonc
+{
+  // Define user groups
+  "groups": {
+    "group:admin": ["you@email.com"],           // Full access
+    "group:contractors": ["contractor@email.com"] // Limited access
+  },
+
+  // Define who can manage server tags
+  "tagOwners": {
+    "tag:prod": ["group:admin"],
+    "tag:preprod": ["group:admin"]
+  },
+
+  // Access rules (evaluated top to bottom)
+  "acls": [
+    {
+      // Admins can access everything on all servers
+      "action": "accept",
+      "src": ["group:admin"],
+      "dst": ["*:*"]
+    },
+    {
+      // Contractors can only access preprod dashboard
+      "action": "accept",
+      "src": ["group:contractors"],
+      "dst": ["tag:preprod:9090"]
+    }
+    // Implicit deny: contractors cannot reach prod
+  ]
+}
+```
+
+**Apply tags to your servers:**
+
+```bash
+# On preprod server
+sudo tailscale up --advertise-tags=tag:preprod
+
+# On prod server
+sudo tailscale up --advertise-tags=tag:prod
+```
+
+| Scenario | ACLs needed? |
+|----------|--------------|
+| Solo developer | No |
+| Small trusted team | No |
+| Team with contractors | Yes |
+| Compliance requirements | Yes |
+
+### Local access (alternative)
+
+```bash
+# On the server directly
+curl -u admin:yourpassword http://localhost:9090/api/overview
+
+# Via SSH tunnel (if Tailscale not available)
+ssh -L 9090:localhost:9090 user@your-vps
+# Then visit http://localhost:9090 in your browser
+```
 
 ## Adding Apps
 
