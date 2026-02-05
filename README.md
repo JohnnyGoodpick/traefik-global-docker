@@ -123,134 +123,9 @@ The dashboard is bound to **localhost only** (`127.0.0.1:9090`) with basic auth.
 
 ### Remote access via Tailscale (recommended)
 
-[Tailscale](https://tailscale.com) creates a private mesh network (tailnet) between your devices. Install it on your servers and personal devices to securely access admin interfaces without public exposure.
+For secure remote access without public exposure, use [Tailscale](https://tailscale.com) to create a private mesh network between your devices and servers.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Your Tailnet                        │
-│                                                         │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐            │
-│  │  Laptop  │   │  Phone   │   │  Tablet  │  ← Clients │
-│  └────┬─────┘   └────┬─────┘   └────┬─────┘            │
-│       │              │              │                   │
-│       └──────────────┼──────────────┘                   │
-│                      │                                  │
-│         ┌────────────┴────────────┐                     │
-│         │                         │                     │
-│         ▼                         ▼                     │
-│   ┌───────────┐            ┌───────────┐               │
-│   │  Preprod  │            │   Prod    │   ← Servers   │
-│   │   :9090   │            │   :9090   │               │
-│   └───────────┘            └───────────┘               │
-│    preprod.tailnet          prod.tailnet               │
-└─────────────────────────────────────────────────────────┘
-```
-
-#### Setup
-
-1. **Install Tailscale on each VPS**
-   ```bash
-   curl -fsSL https://tailscale.com/install.sh | sh
-   sudo tailscale up
-   ```
-
-2. **Install Tailscale on your devices**
-   - macOS/Windows/Linux: [tailscale.com/download](https://tailscale.com/download)
-   - iOS/Android: App Store / Play Store
-
-3. **Get your server's Tailscale hostname**
-   ```bash
-   tailscale status
-   # Example output:
-   # 100.x.y.z   preprod   linux   -
-   ```
-
-4. **Access the dashboard** from any device on your tailnet
-   ```
-   http://preprod.your-tailnet.ts.net:9090
-   http://prod.your-tailnet.ts.net:9090
-   ```
-
-The dashboard requires basic auth even over Tailscale (defense in depth).
-
-#### Why Tailscale over public exposure?
-
-| Public (with auth) | Tailscale |
-|--------------------|-----------|
-| Visible to port scanners | Invisible to internet |
-| Vulnerable to brute force | No public endpoint |
-| Zero-day risk | Identity-based access |
-| Just a password | Device + user authentication |
-
-#### ACLs: Team access control (optional)
-
-By default, all devices on your tailnet can access all other devices. For solo use, this is fine.
-
-For teams, Tailscale ACLs let you restrict who can access what. ACLs are configured in the Tailscale admin console: **Access Controls** → `https://login.tailscale.com/admin/acls`
-
-```
-┌─────────────────────────────────────────┐
-│              Your Tailnet               │
-│                                         │
-│  You (admin)─────────┬─► Prod :9090 ✓   │
-│                      └─► Preprod :9090 ✓│
-│                                         │
-│  Contractor ─────────┬─► Prod :9090 ✗   │  ← ACL blocks
-│                      └─► Preprod :9090 ✓│  ← ACL allows
-└─────────────────────────────────────────┘
-```
-
-**Example ACL configuration:**
-
-```jsonc
-{
-  // Define user groups
-  "groups": {
-    "group:admin": ["you@email.com"],           // Full access
-    "group:contractors": ["contractor@email.com"] // Limited access
-  },
-
-  // Define who can manage server tags
-  "tagOwners": {
-    "tag:prod": ["group:admin"],
-    "tag:preprod": ["group:admin"]
-  },
-
-  // Access rules (evaluated top to bottom)
-  "acls": [
-    {
-      // Admins can access everything on all servers
-      "action": "accept",
-      "src": ["group:admin"],
-      "dst": ["*:*"]
-    },
-    {
-      // Contractors can only access preprod dashboard
-      "action": "accept",
-      "src": ["group:contractors"],
-      "dst": ["tag:preprod:9090"]
-    }
-    // Implicit deny: contractors cannot reach prod
-  ]
-}
-```
-
-**Apply tags to your servers:**
-
-```bash
-# On preprod server
-sudo tailscale up --advertise-tags=tag:preprod
-
-# On prod server
-sudo tailscale up --advertise-tags=tag:prod
-```
-
-| Scenario | ACLs needed? |
-|----------|--------------|
-| Solo developer | No |
-| Small trusted team | No |
-| Team with contractors | Yes |
-| Compliance requirements | Yes |
+**[Full Tailscale setup guide →](docs/tailscale.md)**
 
 ### Local access (alternative)
 
@@ -344,6 +219,8 @@ traefik-global-docker/
 ├── .env.example     # Template
 ├── acme.json        # SSL certificates (auto-managed)
 ├── logrotate.conf   # Log rotation config (install to /etc/logrotate.d/)
+├── docs/
+│   └── tailscale.md # Tailscale setup for remote dashboard access
 └── logs/
     └── access.log   # All HTTP requests (JSON)
 ```
