@@ -107,7 +107,7 @@ services:
       - "--accesslog=true"
       - "--accesslog.filepath=/var/log/traefik/access.log"
       - "--accesslog.format=json"
-      - "--accesslog.bufferingsize=100"
+      - "--accesslog.bufferingsize=10"
       - "--accesslog.fields.headers.defaultmode=drop"
       - "--accesslog.fields.headers.names.User-Agent=keep"
       - "--accesslog.fields.headers.names.X-Forwarded-For=keep"
