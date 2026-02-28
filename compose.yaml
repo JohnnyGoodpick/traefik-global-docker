@@ -29,6 +29,8 @@ services:
     container_name: traefik
     restart: always
     read_only: true
+    mem_limit: 512m
+    mem_reservation: 128m
     security_opt:
       - no-new-privileges:true
     cap_drop:
