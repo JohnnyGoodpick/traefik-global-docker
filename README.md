@@ -221,13 +221,14 @@ docker compose up -d --force-recreate traefik
 
 ```
 traefik-global-docker/
-├── compose.yaml     # Main Traefik configuration
-├── .env             # Credentials (create from .env.example)
-├── .env.example     # Template
-├── acme.json        # SSL certificates (auto-managed)
-├── logrotate.conf   # Log rotation config (install to /etc/logrotate.d/)
+├── compose.yaml       # Main Traefik configuration
+├── middlewares.yml    # Global middlewares (security headers, rate limiting)
+├── .env               # Credentials (create from .env.example)
+├── .env.example       # Template
+├── acme.json          # SSL certificates (auto-managed)
+├── logrotate.conf     # Log rotation config (install to /etc/logrotate.d/)
 ├── docs/
-│   └── tailscale.md # Tailscale setup for remote dashboard access
+│   └── tailscale.md  # Tailscale setup for remote dashboard access
 └── logs/
-    └── access.log   # All HTTP requests (JSON)
+    └── access.log     # All HTTP requests (JSON)
 ```

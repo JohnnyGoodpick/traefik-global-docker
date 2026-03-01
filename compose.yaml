@@ -65,6 +65,7 @@ services:
     volumes:
       - ./acme.json:/acme.json:rw
       - ./logs:/var/log/traefik:rw
+      - ./middlewares.yml:/etc/traefik/middlewares.yml:ro
     networks:
       - app-proxy
       - socket-internal
@@ -78,22 +79,8 @@ services:
       - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
       - "traefik.http.middlewares.dashboard-auth.basicauth.users=${DASHBOARD_USER}:${DASHBOARD_PASSWORD_HASH}"
 
-      # Security Headers (Applied globally via entrypoint)
-      # Ref: https://doc.traefik.io/traefik/middlewares/http/headers/
-      # Ref: https://owasp.org/www-project-secure-headers/
-      - "traefik.http.middlewares.security-headers.headers.stsSeconds=31536000"
-      - "traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true"
-      - "traefik.http.middlewares.security-headers.headers.frameDeny=true"
-      - "traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true"
-      - "traefik.http.middlewares.security-headers.headers.browserXssFilter=true"
-      - "traefik.http.middlewares.security-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
-
-      # No compression middleware because we handle it at app-level
-      # Rate Limiting (Protects SaaS from brute force)
-      - "traefik.http.middlewares.rate-limit.ratelimit.average=100"
-      - "traefik.http.middlewares.rate-limit.ratelimit.burst=50"
-      - "traefik.http.middlewares.rate-limit.ratelimit.period=1s"
-      - "traefik.http.middlewares.rate-limit.ratelimit.sourceCriterion.ipStrategy.depth=1"
+      # Security headers & rate-limit are defined in middlewares.yml (file provider)
+      # to guarantee they exist before the docker provider processes any routes.
 
       # TLS Configuration (Enforcing TLS 1.2 minimum)
       - "traefik.tls.options.default.minVersion=VersionTLS12"
@@ -112,6 +99,9 @@ services:
       - "--accesslog.fields.headers.names.User-Agent=keep"
       - "--accesslog.fields.headers.names.X-Forwarded-For=keep"
 
+      # File Provider (global middlewares — loaded before docker provider)
+      - "--providers.file.filename=/etc/traefik/middlewares.yml"
+
       # Provider Configuration (via socket proxy for security)
       # Ref: https://doc.traefik.io/traefik/providers/docker/
       - "--providers.docker=true"
@@ -129,7 +119,7 @@ services:
 
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.websecure.http3" # Native HTTP/3 for FrankenPHP
-      - "--entrypoints.websecure.http.middlewares=security-headers@docker,rate-limit@docker"
+      - "--entrypoints.websecure.http.middlewares=security-headers@file,rate-limit@file"
 
       # Real IP Propagation (Laravel octant/frankenphp requires this)
       - "--entrypoints.websecure.forwardedHeaders.trustedIPs=127.0.0.1/32,172.16.0.0/12,10.0.0.0/8"
