@@ -42,7 +42,7 @@ A hardened Traefik v3.6.7 reverse proxy for Docker container auto-discovery on a
 ```bash
 # 1. Create required files/directories
 sudo touch acme.json && sudo chown root:root acme.json && sudo chmod 600 acme.json
-mkdir -p logs
+mkdir -p logs && sudo chown root:root logs && chmod 755 logs
 
 # 2. Generate dashboard password hash
 # Run interactively - it will prompt for password twice
@@ -84,9 +84,11 @@ sudo mkdir -p /opt/traefik
 sudo cp -r ./* /opt/traefik/
 cd /opt/traefik
 
-# Create ACME storage file (required before first run)
-# Must be owned by root - Traefik runs as root inside the container
+# Create ACME storage and logs directory
+# Both must be owned by root: Traefik uses cap_drop: ALL which removes CAP_DAC_OVERRIDE,
+# so even UID 0 must satisfy normal file permissions — ownership is required, not optional.
 sudo touch acme.json && sudo chown root:root acme.json && sudo chmod 600 acme.json
+mkdir -p logs && sudo chown root:root logs && chmod 755 logs
 
 # Configure environment
 cp .env.example .env
@@ -175,17 +177,22 @@ tail -f logs/access.log | jq 'select(.DownstreamStatus >= 400)'
 
 ### Log Rotation
 
-Install logrotate config to prevent disk filling:
+Install logrotate config to prevent disk filling. The config uses a placeholder path
+that must be replaced with the actual install path — do not use `sudo cp` directly.
 
 ```bash
-# Edit logrotate.conf - update the path to match your install location
-sudo cp logrotate.conf /etc/logrotate.d/traefik
+# Install with correct absolute path (run from the project directory)
+sed "s|/path/to/traefik-global-docker|$(pwd)|g" logrotate.conf | sudo tee /etc/logrotate.d/traefik
 
-# Test rotation (dry run)
-sudo logrotate -d /etc/logrotate.d/traefik
+# Verify the install (dry run — prints what would happen without doing anything)
+sudo logrotate --debug /etc/logrotate.d/traefik
 ```
 
-Rotation: daily, keeps 14 days, compresses old logs.
+The output should show `rotating pattern: /your/actual/path/logs/access.log` with no
+"insecure permissions" error. If it says "log does not need rotating", that is normal —
+it means the log hasn't reached the 50M threshold yet.
+
+Rotation: daily or 50M threshold, keeps 14 days, compresses old logs.
 
 ## Troubleshooting
 
