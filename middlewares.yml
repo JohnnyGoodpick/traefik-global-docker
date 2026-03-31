@@ -11,6 +11,7 @@ http:
         referrerPolicy: "strict-origin-when-cross-origin"
         customResponseHeaders:
           Cross-Origin-Opener-Policy: "same-origin"
+          Permissions-Policy: "camera=(), microphone=(), usb=(), gyroscope=(), magnetometer=(), fullscreen=(self), geolocation=(self), payment=(self)"
 
     rate-limit:
       rateLimit:
