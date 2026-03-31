@@ -8,6 +8,8 @@ http:
         contentTypeNosniff: true
         browserXssFilter: true
         referrerPolicy: "strict-origin-when-cross-origin"
+        customResponseHeaders:
+          Cross-Origin-Opener-Policy: "same-origin"
 
     rate-limit:
       rateLimit:
