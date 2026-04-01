@@ -10,7 +10,7 @@ http:
         browserXssFilter: true
         referrerPolicy: "strict-origin-when-cross-origin"
         customResponseHeaders:
-          Cross-Origin-Opener-Policy: "same-origin"
+          Cross-Origin-Opener-Policy: "same-origin-allow-popups"
           Permissions-Policy: "camera=(), microphone=(), usb=(), gyroscope=(), magnetometer=(), fullscreen=(self), geolocation=(self), payment=(self)"
 
     rate-limit:
